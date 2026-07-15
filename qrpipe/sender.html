@@ -74,6 +74,17 @@ const VMAX=10; const ECC_LEVELS=['L','M','Q','H'];
 const QR_CAPACITY={1:{L:17,M:14,Q:11,H:7},2:{L:32,M:26,Q:20,H:14},3:{L:53,M:42,Q:32,H:24},4:{L:78,M:62,Q:46,H:34},5:{L:106,M:84,Q:66,H:44},6:{L:134,M:106,Q:86,H:60},7:{L:154,M:122,Q:108,H:74},8:{L:192,M:152,Q:130,H:86},9:{L:230,M:180,Q:150,H:98},10:{L:271,M:213,Q:151,H:119}};
 function maxStepBytes(vMax,ecc,digits){ return QR_CAPACITY[vMax][ecc]-(1+digits+1); }
 export function recommendVersion(stepBytes,ecc,digits){ for(let v=1;v<=VMAX;v++){ if(maxStepBytes(v,ecc,digits)>=stepBytes) return v; } return null; }
+function _qrCountBits(version){ return version < 10 ? 8 : 16; }
+const _utf8Encoder = new TextEncoder();
+function pickVersion(str, ecc){
+  const bytes = _utf8Encoder.encode(str).length;
+  const bom = bytes > str.length ? 3 : 0;
+  for (let version = 1; version <= VMAX; version++){
+    const needBits = 4 + _qrCountBits(version) + 8 * (bytes + bom);
+    if (needBits <= 8 * QR_CAPACITY[version][ecc]) return version;
+  }
+  return null;
+}
 function estimateTime(pages,fps){ return fps? pages/fps : null; }
 
 // ---- buildPages ----
@@ -97,15 +108,20 @@ let fps = 2;
 
 function renderQR(str){
   const box = $('qrcode'); box.innerHTML='';
-  // ECC 级别映射到 qrcodejs 级别字符串
-  const level = $('ecc').value;
-  new QRCode(box, { text: str, width: 320, height: 320, correctLevel: QRCode.CorrectLevel[level] });
+  const ecc = $('ecc').value;
+  const ver = pickVersion(str, ecc);
+  if (ver == null){
+    box.textContent = '⚠ 该页内容超出 QR V'+VMAX+' 容量，无法生成二维码（请减小步长或容错率）';
+    return;
+  }
+  new QRCode(box, { text: str, width: 320, height: 320, typeNumber: ver, correctLevel: QRCode.CorrectLevel[ecc] });
 }
 
 function showPage(i){
   idx = Math.max(0, Math.min(i, playList.length-1));
-  renderQR(playList[idx]);
   $('pageInfo').textContent = idx===0 ? '【第 0 页 · 任务元信息】' : `第 ${idx} / ${playList.length-1} 页`;
+  try { renderQR(playList[idx]); }
+  catch(e){ $('qrcode').textContent = '⚠ 生成二维码失败：'+e.message; }
 }
 
 function startAuto(){
@@ -127,10 +143,10 @@ $('analyze').addEventListener('click', async ()=>{
   const buf = new Uint8Array(await f.arrayBuffer());
   if(buf.length===0){ alert('文件为空'); return; }
   built = await buildPages(buf, step, taskId, {name:f.name, fps, ecc});
-  // 参数校验：所需版本
-  const digits = String(built.pages).length; // 数据页页码最大位数
-  const ver = recommendVersion(step + 3, ecc, digits); // +3 预留 qrcodejs 注入的 UTF-8 BOM
-  const tooLarge = ver == null;
+  // 容量校验：对实际生成页串逐一 pickVersion，任一页超 VMAX 则禁止开始
+  const allPages = [built.metaPage, ...built.dataPages];
+  let needV = 0, tooLarge = false;
+  for (const s of allPages){ const v = pickVersion(s, ecc); if (v == null){ tooLarge = true; break; } if (v > needV) needV = v; }
   const t = estimateTime(built.pages, fps);
   $('summary').textContent =
     `文件名：${f.name}\n`+
@@ -140,7 +156,7 @@ $('analyze').addEventListener('click', async ()=>{
     `步长：${step} 字节\n`+
     `容错率：${ecc}\n`+
     `翻页频率：${fps? fps+' 张/秒':'手动'}\n`+
-    `所需 QR 版本：${ver!=null? ver : '超出 V'+VMAX+' 上限'}${tooLarge? '（请减小步长或容错率）':''}\n`+
+    `所需 QR 版本：${!tooLarge ? needV : '超出 V'+VMAX+' 上限'}${tooLarge?'（请减小步长或容错率）':''}\n`+
     `预计总时间：${t!=null? (t>=60? (t/60).toFixed(1)+' 分钟' : t.toFixed(1)+' 秒'):'手动模式'}\n`+
     `hash：${built.hash}`;
   $('confirm').disabled = tooLarge; // 步长超限禁止开始，避免生成过大二维码

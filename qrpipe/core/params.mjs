@@ -36,3 +36,22 @@ export function recommendVersion(stepBytes, ecc, pageDigits) {
   }
   return null;
 }
+
+// 内部：QR 8-bit 字节模式的字符计数指示符位数（V<10 为 8，V>=10 为 16）
+function _qrCountBits(version){ return version < 10 ? 8 : 16; }
+
+// 选择能容纳该二维码字符串的最小 QR 版本（1..VMAX）；超 VMAX 返回 null。
+// 精确匹配 qrcodejs createData 的容量约束：getLengthInBits = 4(mode) + countBits + 8·parsedData。
+//   - parsedData = 该字符串的 UTF-8 字节数 + (含非 ASCII 时 qrcodejs 注入的 3 字节 BOM)。
+//   - 这规避了 qrcodejs 自动选版（r 函数）忽略 mode/count 开销导致的 code length overflow。
+// 传入的 str 是完整二维码字符串（如 'A12|<内容>'），ecc 为 'L'/'M'/'Q'/'H'。
+const _utf8Encoder = new TextEncoder();
+export function pickVersion(str, ecc){
+  const bytes = _utf8Encoder.encode(str).length;
+  const bom = bytes > str.length ? 3 : 0;   // 含非 ASCII → qrcodejs 注入 3 字节 BOM
+  for (let version = 1; version <= VMAX; version++){
+    const needBits = 4 + _qrCountBits(version) + 8 * (bytes + bom);
+    if (needBits <= 8 * QR_CAPACITY[version][ecc]) return version;
+  }
+  return null;
+}

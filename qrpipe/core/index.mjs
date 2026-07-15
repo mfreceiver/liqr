@@ -2,11 +2,11 @@
 import { paginate } from './paginate.mjs';
 import { encodePage, encodeMeta, decodePage, decodeMeta, isValidTaskId, SEP } from './protocol.mjs';
 import { sha256Hex } from './hash.mjs';
-import { recommendVersion, maxStepBytes, VMAX, ECC_LEVELS, QR_CAPACITY, estimateTime } from './params.mjs';
+import { recommendVersion, maxStepBytes, VMAX, ECC_LEVELS, QR_CAPACITY, estimateTime, pickVersion } from './params.mjs';
 
 export { paginate, encodePage, encodeMeta, decodePage, decodeMeta, isValidTaskId, SEP };
 export { sha256Hex, _pureJsSha256Hex } from './hash.mjs';
-export { recommendVersion, maxStepBytes, VMAX, QR_CAPACITY, estimateTime };
+export { recommendVersion, maxStepBytes, VMAX, QR_CAPACITY, estimateTime, pickVersion };
 export { utf8Iterate, MIN_STEP } from './paginate.mjs';
 
 // 构造发送序列：第0页元信息 + 数据页

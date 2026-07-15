@@ -25,6 +25,7 @@ test('T7-C3 receiver.html 拼装/校验/UI', () => {
   assert.ok(html.includes('reassemble'));
   assert.ok(/缺页|missing/i.test(html));
   assert.ok(/下载|download/i.test(html));
+  assert.ok(/sender-single\.html/.test(read('receiver.html')));
 });
 test('T7-C4 解析路径与 core 一致（复用 reassemble）', async () => {
   const { buildPages, decodePage, reassemble } = await import('../core/index.mjs');
