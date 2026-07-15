@@ -1,4 +1,4 @@
-// qrpipe/core/hash.mjs
+// liqr/core/hash.mjs
 function toHex(bytes) {
   let s = '';
   for (const b of bytes) s += b.toString(16).padStart(2, '0');

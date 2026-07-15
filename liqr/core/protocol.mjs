@@ -1,4 +1,4 @@
-// qrpipe/core/protocol.mjs
+// liqr/core/protocol.mjs
 export const SEP = '|';
 
 export function isValidTaskId(s) {

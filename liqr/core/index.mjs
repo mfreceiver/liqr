@@ -1,4 +1,4 @@
-// qrpipe/core/index.mjs
+// liqr/core/index.mjs
 import { paginate } from './paginate.mjs';
 import { encodePage, encodeMeta, decodePage, decodeMeta, isValidTaskId, SEP } from './protocol.mjs';
 import { sha256Hex } from './hash.mjs';

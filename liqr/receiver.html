@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QRPipe 接收端</title>
+<title>liqr 接收端</title>
 <!-- jsQR：经典 script，HTTPS 下加载 -->
 <script src="lib/jsQR.min.js"></script>
 <style>
@@ -16,7 +16,7 @@
 </style>
 </head>
 <body>
-<h2>QRPipe 接收端</h2>
+<h2>liqr 接收端</h2>
 <p>📱 <a href="sender-single.html" download>下载发送端单文件（双击即用）</a></p>
 <video id="video" playsinline autoplay muted></video>
 <canvas id="canvas"></canvas>
@@ -37,7 +37,7 @@ const dlBtn = document.getElementById('download');
 let meta = null;                 // 任务元信息（来自第0页）
 let collected = new Map();       // pageNum -> payload
 let resultBlob = null;
-const TASK_KEY = 'qrpipe-task';  // 简化：单任务（按 meta.t）
+const TASK_KEY = 'liqr-task';  // 简化：单任务（按 meta.t）
 
 async function startCamera(){
   try {

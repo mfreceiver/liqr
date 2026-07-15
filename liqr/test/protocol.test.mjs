@@ -1,4 +1,4 @@
-// qrpipe/test/protocol.test.mjs
+// liqr/test/protocol.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { encodePage, decodePage, encodeMeta, decodeMeta, isValidTaskId, SEP } from '../core/protocol.mjs';

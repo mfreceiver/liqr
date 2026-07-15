@@ -1,4 +1,4 @@
-// qrpipe/test/hash.test.mjs
+// liqr/test/hash.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -13,7 +13,7 @@ test('T3-C2 abc NIST 向量', async () => {
   assert.equal(await sha256Hex(enc('abc')), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
 });
 test('T3-C3 与 node:crypto 交叉验证', async () => {
-  const data = enc('你好，世界！QRPipe 测试 hello 1234567890');
+  const data = enc('你好，世界！liqr 测试 hello 1234567890');
   const expected = createHash('sha256').update(data).digest('hex');
   assert.equal(await sha256Hex(data), expected);
 });

@@ -1,4 +1,4 @@
-// qrpipe/test/sender-html.test.mjs
+// liqr/test/sender-html.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';

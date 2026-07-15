@@ -1,4 +1,4 @@
-// qrpipe/core/paginate.mjs
+// liqr/core/paginate.mjs
 export const MIN_STEP = 4;
 
 // 按 UTF-8 字节前缀判断单个字符的字节长度

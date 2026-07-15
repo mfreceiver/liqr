@@ -1,4 +1,4 @@
-# QRPipe — QR 二维码翻页文件传输套装 · 设计规格 (spec)
+# liqr — QR 二维码翻页文件传输套装 · 设计规格 (spec)
 
 - **日期**: 2026-07-15
 - **状态**: 已与用户对齐，待 review
@@ -295,7 +295,7 @@ paginate(bytes, stepBytes):
 ## 13. 文件结构（初步）
 
 ```
-qrpipe/
+liqr/
   core/
     protocol.mjs      # 协议编解码
     paginate.mjs      # 确定性分页

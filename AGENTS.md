@@ -1,11 +1,11 @@
-# AGENTS.md — QRPipe (personal_projects/liqr)
+# AGENTS.md — liqr (personal_projects/liqr)
 
-**QRPipe**：通过二维码动态翻页的单向文件传输套装。发送端（Windows，纯单文件 HTML+JS，双击即用）读取纯文本文件、分段生成二维码、动态翻页；接收端（手机浏览器，HTTPS 托管）用摄像头连续识别、本地拼装还原、校验完整性。数据全程不经过互联网。
+**liqr**：通过二维码动态翻页的单向文件传输套装。发送端（Windows，纯单文件 HTML+JS，双击即用）读取纯文本文件、分段生成二维码、动态翻页；接收端（手机浏览器，HTTPS 托管）用摄像头连续识别、本地拼装还原、校验完整性。数据全程不经过互联网。
 
 - 中文工作环境；代码用英文标识符，UI 文案与注释用中文。
 - 纯 JavaScript (ESM) + HTML；无 lint / build 约定（不打包，HTML 直接引用同目录 `lib/` 与内联 core）。
-- 测试：Node v20 内置 `node --test`，测试文件置于 `qrpipe/test/*.test.mjs`。项目验证命令：`node --test qrpipe/test/`。
-- 二维码库源码置于 `qrpipe/lib/`（qrcodejs 生成、jsQR 解析），不从 CDN 加载。
+- 测试：Node v20 内置 `node --test`，测试文件置于 `liqr/test/*.test.mjs`。项目验证命令：`node --test liqr/test/`。
+- 二维码库源码置于 `liqr/lib/`（qrcodejs 生成、jsQR 解析），不从 CDN 加载。
 - 数据隐私硬约束：接收端识别与文件内容全程在手机浏览器本地处理（getUserMedia + jsQR + IndexedDB），绝不回传互联网。
 - ocmar 工作流产物：`docs/ocmar/`（specs / plans / reports）；ledger 与执行产物在 `.ocmar/workflows/<slug>/`（git-ignored）。
 

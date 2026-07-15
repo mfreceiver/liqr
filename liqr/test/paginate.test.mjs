@@ -1,4 +1,4 @@
-// qrpipe/test/paginate.test.mjs
+// liqr/test/paginate.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { paginate, utf8Iterate, MIN_STEP } from '../core/paginate.mjs';

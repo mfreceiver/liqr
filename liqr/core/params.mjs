@@ -1,4 +1,4 @@
-// qrpipe/core/params.mjs
+// liqr/core/params.mjs
 export const VMAX = 10;
 export const ECC_LEVELS = ['L', 'M', 'Q', 'H'];
 

@@ -1,4 +1,4 @@
-// qrpipe/test/e2e.test.mjs
+// liqr/test/e2e.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPages, reassemble, decodePage, decodeMeta, recommendVersion } from '../core/index.mjs';
@@ -6,7 +6,7 @@ import { buildPages, reassemble, decodePage, decodeMeta, recommendVersion } from
 const enc = (s) => new TextEncoder().encode(s);
 const dec = (b) => new TextDecoder().decode(b);
 
-const TEXT = '你好，QRPipe！这是一段用于端到端测试的中文与 English 混合文本。\n第二行换行。12345';
+const TEXT = '你好，liqr！这是一段用于端到端测试的中文与 English 混合文本。\n第二行换行。12345';
 
 async function collectAll(built) {
   const map = new Map();

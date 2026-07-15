@@ -1,4 +1,4 @@
-// qrpipe/test/params.test.mjs
+// liqr/test/params.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { QR_CAPACITY, VMAX, ECC_LEVELS, maxStepBytes, estimateTime, recommendVersion, pickVersion } from '../core/params.mjs';
