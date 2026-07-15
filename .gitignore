@@ -1,0 +1,12 @@
+# ocmar 执行产物（ledger / 报告 / 评审 / verify 日志）
+.ocmar/
+
+# Node
+node_modules/
+
+# 日志
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
