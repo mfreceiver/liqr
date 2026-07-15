@@ -40,17 +40,28 @@ export function recommendVersion(stepBytes, ecc, pageDigits) {
 // 内部：QR 8-bit 字节模式的字符计数指示符位数（V<10 为 8，V>=10 为 16）
 function _qrCountBits(version){ return version < 10 ? 8 : 16; }
 
+// 内部：按 qrcodejs 的 charCodeAt→UTF-8 口径计算 parsedData 字节数，精确匹配 createData 的 getLengthInBits。
+//   qrcodejs：charCode >65536→4B, >2048→3B, >128→2B, 否则1B；若与字符串长度不等(存在多字节字符)则前置 3B BOM。
+//   关键：astral 字符(emoji/CJK 扩展区)以 UTF-16 代理对表示，每个代理按 3B 计 = 6B/字符，
+//   比 TextEncoder 的 4B 多。必须用此口径，否则低估字节数 → 选错版本 → code length overflow。
+function _qrParsedBytes(str){
+  let n = 0;
+  for (let i = 0; i < str.length; i++){
+    const f = str.charCodeAt(i);
+    if (f > 65536) n += 4;
+    else if (f > 2048) n += 3;
+    else if (f > 128) n += 2;
+    else n += 1;
+  }
+  if (n !== str.length) n += 3;   // qrcodejs 注入 3 字节 BOM
+  return n;
+}
 // 选择能容纳该二维码字符串的最小 QR 版本（1..VMAX）；超 VMAX 返回 null。
-// 精确匹配 qrcodejs createData 的容量约束：getLengthInBits = 4(mode) + countBits + 8·parsedData。
-//   - parsedData = 该字符串的 UTF-8 字节数 + (含非 ASCII 时 qrcodejs 注入的 3 字节 BOM)。
-//   - 这规避了 qrcodejs 自动选版（r 函数）忽略 mode/count 开销导致的 code length overflow。
-// 传入的 str 是完整二维码字符串（如 'A12|<内容>'），ecc 为 'L'/'M'/'Q'/'H'。
-const _utf8Encoder = new TextEncoder();
+// 精确匹配 qrcodejs createData 约束：getLengthInBits = 4(mode) + countBits(V) + 8·parsedData <= 8·QR_CAPACITY[V][ecc]。
 export function pickVersion(str, ecc){
-  const bytes = _utf8Encoder.encode(str).length;
-  const bom = bytes > str.length ? 3 : 0;   // 含非 ASCII → qrcodejs 注入 3 字节 BOM
+  const parsedBytes = _qrParsedBytes(str);
   for (let version = 1; version <= VMAX; version++){
-    const needBits = 4 + _qrCountBits(version) + 8 * (bytes + bom);
+    const needBits = 4 + _qrCountBits(version) + 8 * parsedBytes;
     if (needBits <= 8 * QR_CAPACITY[version][ecc]) return version;
   }
   return null;

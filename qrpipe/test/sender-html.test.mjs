@@ -33,4 +33,5 @@ test('sender-single.html 单文件自包含', () => {
   const html = readFileSync(join(here, '..', 'sender-single.html'), 'utf8');
   assert.ok(!html.includes('src="lib/qrcode.min.js"'), '单文件不应再外引 lib');
   assert.ok(html.includes('pickVersion'), '单文件应含 pickVersion 修复');
+  assert.ok(html.includes('this._htOption.typeNumber>0?'), 'sender-single.html should contain patched makeCode');
 });
