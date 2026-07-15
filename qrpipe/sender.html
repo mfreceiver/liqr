@@ -22,11 +22,7 @@
 <div id="setup">
   <div class="row"><label>文件：</label><input type="file" id="file"></div>
   <div class="row"><label>任务序号：</label><input type="text" id="taskId" maxlength="1" value="A" style="width:40px;text-transform:uppercase"></div>
-  <div class="row"><label>步长(字节)：</label><input type="number" id="step" value="150" min="4"></div>
   <div class="row"><label>频率(张/秒)：</label><input type="number" id="fps" value="2" min="0" step="0.5">（0=手动）</div>
-  <div class="row"><label>容错率：</label>
-    <select id="ecc"><option>L</option><option selected>M</option><option>Q</option><option>H</option></select>
-  </div>
   <div class="row"><button id="analyze">分析文件</button></div>
 </div>
 
@@ -58,7 +54,7 @@ export function paginate(bytes, stepBytes){ if(!(stepBytes>=MIN_STEP)) throw new
 const SEP='|';
 function isValidTaskId(s){ return typeof s==='string' && s.length===1 && s>='A' && s<='Z'; }
 export function encodePage(taskId, pageNum, payload){ if(!isValidTaskId(taskId)) throw new TypeError('非法 taskId'); if(!Number.isInteger(pageNum)||pageNum<0) throw new TypeError('非法 pageNum'); return `${taskId}${pageNum}${SEP}${payload}`; }
-export function decodePage(str){ if(typeof str!=='string') return null; if(str.length>0&&str.codePointAt(0)===0xFEFF) str=str.slice(1); if(str.length===0) return null; const i=str.indexOf(SEP); if(i<0) return null; const pre=str.slice(0,i); if(pre.length<2) return null; const t=pre[0]; if(!isValidTaskId(t)) return null; const p=Number(pre.slice(1)); if(!Number.isInteger(p)||p<0) return null; return {taskId:t,pageNum:p,payload:str.slice(i+1)}; }
+export function decodePage(str){ if(typeof str!=='string') return null; if(str.length>0&&str.charCodeAt(0)===0xFEFF) str=str.slice(1); if(str.length===0) return null; const i=str.indexOf(SEP); if(i<0) return null; const pre=str.slice(0,i); if(pre.length<2) return null; const t=pre[0]; if(!isValidTaskId(t)) return null; const p=Number(pre.slice(1)); if(!Number.isInteger(p)||p<0) return null; return {taskId:t,pageNum:p,payload:str.slice(i+1)}; }
 export function encodeMeta(m){ return JSON.stringify(m); }
 export function decodeMeta(p){ try{ const o=JSON.parse(p); return (o&&typeof o==='object')?o:null; }catch{ return null; } }
 
@@ -77,27 +73,14 @@ export function recommendVersion(stepBytes,ecc,digits){ for(let v=1;v<=VMAX;v++)
 function _qrCountBits(version){ return version < 10 ? 8 : 16; }
 // 内部：按 qrcodejs 的 charCodeAt→UTF-8 口径计算 parsedData 字节数，精确匹配 createData 的 getLengthInBits。
 //   qrcodejs 的 QR8bitByte 在循环外只声明一次 b 数组，追加字符后不重置；因此后续字符
-//   都会追加当前历史最大类别的字节（包含 stale bytes），这里故意复刻该 running-max 行为。
-//   类别为 charCode >65536→4B, >2048→3B, >128→2B, 否则1B；若与字符串长度不等则前置 3B BOM。
-//   astral 字符以 UTF-16 代理对表示，每个代理按 3B 计 = 6B/字符；必须用此口径，否则会 overflow。
+// qrcodejs 已修正为标准 UTF-8（见 lib 补丁），parsedData = TextEncoder 字节 + (含非 ASCII 时一次 3 字节 BOM)
+const _utf8Encoder = new TextEncoder();
 function _qrParsedBytes(str){
-  let maxCat = 1;
-  let total = 0;
-  for (let i = 0; i < str.length; i++){
-    const f = str.charCodeAt(i);
-    let cat;
-    if (f > 65536) cat = 4;
-    else if (f > 2048) cat = 3;
-    else if (f > 128) cat = 2;
-    else cat = 1;
-    if (cat > maxCat) maxCat = cat;
-    total += maxCat;
-  }
-  if (total !== str.length) total += 3;
-  return total;
+  const bytes = _utf8Encoder.encode(str).length;
+  return bytes + (bytes !== str.length ? 3 : 0);
 }
 // 选择能容纳该二维码字符串的最小 QR 版本（1..VMAX）；超 VMAX 返回 null。
-// 精确匹配 qrcodejs createData 约束：getLengthInBits = 4(mode) + countBits(V) + 8·parsedData <= 8·QR_CAPACITY[V][ecc]。
+// 精确匹配修正后的 qrcodejs createData 约束：getLengthInBits = 4(mode) + countBits(V) + 8·parsedData <= 8·QR_CAPACITY[V][ecc]。
 function pickVersion(str, ecc){
   const parsedBytes = _qrParsedBytes(str);
   for (let version = 1; version <= VMAX; version++){
@@ -129,13 +112,12 @@ let fps = 2;
 
 function renderQR(str){
   const box = $('qrcode'); box.innerHTML='';
-  const ecc = $('ecc').value;
-  const ver = pickVersion(str, ecc);
+  const ver = pickVersion(str, 'L');
   if (ver == null){
     box.textContent = '⚠ 该页内容超出 QR V'+VMAX+' 容量，无法生成二维码（请减小步长或容错率）';
     return;
   }
-  new QRCode(box, { text: str, width: 320, height: 320, typeNumber: ver, correctLevel: QRCode.CorrectLevel[ecc] });
+  new QRCode(box, { text: str, width: 320, height: 320, typeNumber: ver, correctLevel: QRCode.CorrectLevel.L });
 }
 
 function showPage(i){
@@ -157,27 +139,31 @@ $('analyze').addEventListener('click', async ()=>{
   if(!f){ alert('请先选择文件'); return; }
   const taskId = $('taskId').value.toUpperCase();
   if(!/^[A-Z]$/.test(taskId)){ alert('任务序号必须是 1 位大写字母'); return; }
-  const step = Number($('step').value);
-  if(!(step>=4)){ alert('步长必须 >= 4'); return; }
+  const STEP = 120;
   fps = Number($('fps').value);
-  const ecc = $('ecc').value;
   const buf = new Uint8Array(await f.arrayBuffer());
   if(buf.length===0){ alert('文件为空'); return; }
-  built = await buildPages(buf, step, taskId, {name:f.name, fps, ecc});
+  built = await buildPages(buf, STEP, taskId, {name:f.name, fps, ecc:'L'});
   // 容量校验：对实际生成页串逐一 pickVersion，任一页超 VMAX 则禁止开始
   const allPages = [built.metaPage, ...built.dataPages];
   let needV = 0, tooLarge = false;
-  for (const s of allPages){ const v = pickVersion(s, ecc); if (v == null){ tooLarge = true; break; } if (v > needV) needV = v; }
+  let overMeta = false;
+  for (const [pageIndex, s] of allPages.entries()){
+    const v = pickVersion(s, 'L');
+    if (v == null){ tooLarge = true; overMeta = pageIndex === 0; break; }
+    if (v > needV) needV = v;
+  }
+  if (tooLarge) alert(overMeta ? '元信息（文件名/hash）过长，超出二维码 V10 容量，请缩短文件名' : '内容超出 V10 上限（含扩展区字符过多）');
   const t = estimateTime(built.pages, fps);
   $('summary').textContent =
     `文件名：${f.name}\n`+
     `大小：${buf.length} 字节\n`+
     `任务序号：${taskId}\n`+
     `总数据页：${built.pages} 页（+ 第0页元信息）\n`+
-    `步长：${step} 字节\n`+
-    `容错率：${ecc}\n`+
+    `步长：${STEP} 字节（自动）\n`+
+    `容错率：L\n`+
     `翻页频率：${fps? fps+' 张/秒':'手动'}\n`+
-    `所需 QR 版本：${!tooLarge ? needV : '超出 V'+VMAX+' 上限'}${tooLarge?'（请减小步长或容错率）':''}\n`+
+    `所需 QR 版本：${!tooLarge ? needV : '超出 V'+VMAX+' 上限'}\n`+
     `预计总时间：${t!=null? (t>=60? (t/60).toFixed(1)+' 分钟' : t.toFixed(1)+' 秒'):'手动模式'}\n`+
     `hash：${built.hash}`;
   $('confirm').disabled = tooLarge; // 步长超限禁止开始，避免生成过大二维码

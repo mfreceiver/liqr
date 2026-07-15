@@ -3,69 +3,51 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { QR_CAPACITY, VMAX, ECC_LEVELS, maxStepBytes, estimateTime, recommendVersion, pickVersion } from '../core/params.mjs';
 
-test('T4-C1 容量锚点值', () => {
-  assert.equal(QR_CAPACITY[10].M, 213);
-  assert.equal(QR_CAPACITY[1].L, 17);
-});
-test('T4-C2 maxStepBytes', () => {
-  assert.equal(maxStepBytes(10, 'M', 2), 209);
-});
-test('T4-C3 estimateTime', () => {
-  assert.equal(estimateTime(10, 2), 5);
-  assert.equal(estimateTime(10, 0), null);
-});
-test('T4-C4 recommendVersion 正常', () => {
-  assert.equal(recommendVersion(150, 'M', 2), 9);
-});
-test('T4-C5 recommendVersion 超限', () => {
-  assert.equal(recommendVersion(300, 'M', 2), null);
-});
+const countBits = (v) => v < 10 ? 8 : 16;
+const parsedBytes = (s) => {
+  const bytes = new TextEncoder().encode(s).length;
+  return bytes + (bytes !== s.length ? 3 : 0);
+};
+function expectedVersion(s, ecc) {
+  const p = parsedBytes(s);
+  for (let v = 1; v <= VMAX; v++) {
+    if (4 + countBits(v) + 8 * p <= 8 * QR_CAPACITY[v][ecc]) return v;
+  }
+  return null;
+}
+
+test('T4-C1 容量锚点值', () => { assert.equal(QR_CAPACITY[10].M, 213); assert.equal(QR_CAPACITY[1].L, 17); });
+test('T4-C2 maxStepBytes', () => { assert.equal(maxStepBytes(10, 'M', 2), 209); });
+test('T4-C3 estimateTime', () => { assert.equal(estimateTime(10, 2), 5); assert.equal(estimateTime(10, 0), null); });
+test('T4-C4 recommendVersion 正常', () => { assert.equal(recommendVersion(150, 'M', 2), 9); });
+test('T4-C5 recommendVersion 超限', () => { assert.equal(recommendVersion(300, 'M', 2), null); });
 test('T4-C6 容量单调递增', () => {
-  for (let v = 1; v < VMAX; v++) {
-    for (const e of ECC_LEVELS) assert.ok(QR_CAPACITY[v][e] <= QR_CAPACITY[v+1][e], `V${v}.${e}`);
+  for (let v = 1; v < VMAX; v++) for (const e of ECC_LEVELS) assert.ok(QR_CAPACITY[v][e] <= QR_CAPACITY[v + 1][e]);
+});
+
+test('pickVersion 使用 TextEncoder + 单次 BOM 的正确模型', () => {
+  for (const s of ['中a', '中文混合abc内容def'.repeat(5), '😀', '😀'.repeat(4), '𠮷', '𠮷'.repeat(4)]) {
+    assert.equal(pickVersion(s, 'L'), expectedVersion(s, 'L'), s);
   }
+  assert.equal(parsedBytes('😀'), 7);
+  assert.equal(parsedBytes('𠮷'), 7);
+  assert.equal(pickVersion('中文混合abc内容def'.repeat(5), 'L'), expectedVersion('中文混合abc内容def'.repeat(5), 'L'));
 });
-test('pickVersion 按 charCodeAt 口径选版（精确匹配 qrcodejs createData，含 astral）', () => {
-  const QRc = {1:{L:17,M:14,Q:11,H:7},2:{M:26},3:{M:42},4:{M:62},5:{M:84},6:{M:106},7:{M:122},8:{M:152},9:{M:180},10:{M:213}};
-  const cb = V => V<10?8:16;
-  // 复刻 qrcodejs 的 b 数组不重置导致的 running-max parsedData
-  function parsed(s){ let maxCat=1,total=0; for(let i=0;i<s.length;i++){const f=s.charCodeAt(i); const cat=f>65536?4:f>2048?3:f>128?2:1; if(cat>maxCat)maxCat=cat; total+=maxCat;} if(total!==s.length)total+=3; return total; }
-  function fits(s,V,ecc){ return 4+cb(V)+8*parsed(s) <= 8*QRc[V][ecc]; }
-  const cases = [];
-  for (let n=1;n<=80;n++) cases.push('A'.repeat(n));
-  for (let n=1;n<=80;n++) cases.push('A12|'+'中'.repeat(n));          // BMP 中文
-  for (let n=1;n<=40;n++) cases.push('B3|'+'😀'.repeat(n));           // astral emoji (6B/char via charCodeAt)
-  for (let n=1;n<=40;n++) cases.push('C4|'+'𠮷'.repeat(n));           // astral CJK Ext B
-  for (const s of cases){
-    const V = pickVersion(s, 'M');
-    if (V===null){ assert.ok(!fits(s,10,'M'), 'null but fits V10: '+s.length); }
-    else { assert.ok(fits(s,V,'M'), 'chosen V='+V+' overflows: len='+s.length); assert.ok(V===1||!fits(s,V-1,'M'), 'not minimal V='+V); }
-  }
+
+test('pickVersion V10-L 边界严格遵循模型字节数', () => {
+  const prefix = 'A0|';
+  const capacity = 268 - parsedBytes(prefix);
+  const fit = prefix + 'a'.repeat(capacity);
+  const over = prefix + 'a'.repeat(capacity + 1);
+  assert.equal(parsedBytes(fit), 268);
+  assert.equal(pickVersion(fit, 'L'), 10);
+  assert.equal(pickVersion(over, 'L'), null);
 });
-test('pickVersion astral 内容被正确识别为更大版本（emoji 不再被低估）', () => {
-  // emoji x30 = 60 代理 ×3B + 3BOM = 183B parsedData → V10（旧 TextEncoder 口径会算成 123B 误选 V8 → overflow）
-  assert.equal(pickVersion('😀'.repeat(30), 'M'), 10);
-  assert.equal(pickVersion('😀'.repeat(60), 'M'), null);   // 363B 超 V10
-  assert.equal(pickVersion('中'.repeat(60), 'M'), 10);     // BMP 180B+3BOM
+
+test('pickVersion 294-byte repro 元信息可选版本', () => {
+  const meta = 'A0|' + JSON.stringify({v:1,t:'A',name:'新建文本文档.txt',size:294,pages:6,fps:2,ecc:'L',hash:'sha256:'+'0'.repeat(64)});
+  const version = pickVersion(meta, 'L');
+  assert.ok(version >= 1 && version <= 10);
 });
-test('pickVersion 复刻 qrcodejs b 数组不重置的 running-max 字节行为', () => {
-  const mixed = '中文混合abc内容def'.repeat(5);
-  assert.equal(pickVersion(mixed, 'M'), 10);
-});
-test('pickVersion 超 VMAX 返回 null', () => {
-  assert.equal(pickVersion('A'.repeat(400), 'M'), null);   // 远超 V10
-});
-test('pickVersion 各 ECC 均不自相矛盾', () => {
-  const QRc = {L:{1:17,2:32,3:53,4:78,5:106,6:134,7:154,8:192,9:230,10:271},M:{1:14,2:26,3:42,4:62,5:84,6:106,7:122,8:152,9:180,10:213},Q:{1:11,2:20,3:32,4:46,5:66,6:86,7:108,8:130,9:150,10:151},H:{1:7,2:14,3:24,4:34,5:44,6:60,7:74,8:86,9:98,10:119}};
-  // 复刻 qrcodejs 的 b 数组不重置导致的 running-max parsedData
-  function parsed(s){ let maxCat=1,total=0; for(let i=0;i<s.length;i++){const f=s.charCodeAt(i); const cat=f>65536?4:f>2048?3:f>128?2:1; if(cat>maxCat)maxCat=cat; total+=maxCat;} if(total!==s.length)total+=3; return total; }
-  for (const ecc of ['L','M','Q','H']){
-    for (let n=1;n<=260;n++){
-      const s = 'B5|' + '中'.repeat(n);
-      const V = pickVersion(s, ecc);
-      if (V===null) continue;
-      const need = 4 + (V<10?8:16) + 8*parsed(s);
-      assert.ok(need <= 8*QRc[ecc][V], `ecc=${ecc} n=${n} V=${V} overflow`);
-    }
-  }
-});
+
+test('pickVersion 超 VMAX 返回 null', () => { assert.equal(pickVersion('A'.repeat(400), 'L'), null); });
