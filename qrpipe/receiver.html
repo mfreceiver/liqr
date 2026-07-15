@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QRPipe 接收端</title>
+<!-- jsQR：经典 script，HTTPS 下加载 -->
+<script src="lib/jsQR.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; }
+  #video { width: 100%; max-width: 600px; display: block; }
+  canvas { display: none; }
+  #info { background:#f5f5f5; padding:10px; border-radius:6px; margin:8px 0; white-space:pre-wrap; font-size:14px; }
+  #missing { color:#c00; }
+  button { padding:10px 16px; margin:6px 6px 0 0; font-size:16px; }
+</style>
+</head>
+<body>
+<h2>QRPipe 接收端</h2>
+<video id="video" playsinline autoplay muted></video>
+<canvas id="canvas"></canvas>
+<div id="info">等待识别任务元信息（第 0 页）…</div>
+<div id="missing"></div>
+<button id="download" disabled>⬇ 下载还原文件</button>
+
+<script type="module">
+import { decodePage, decodeMeta, reassemble } from './core/index.mjs';
+
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const info = document.getElementById('info');
+const missingEl = document.getElementById('missing');
+const dlBtn = document.getElementById('download');
+
+let meta = null;                 // 任务元信息（来自第0页）
+let collected = new Map();       // pageNum -> payload
+let resultBlob = null;
+const TASK_KEY = 'qrpipe-task';  // 简化：单任务（按 meta.t）
+
+async function startCamera(){
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
+    video.srcObject = stream;
+    requestAnimationFrame(tick);
+  } catch(e){ info.textContent = '无法访问摄像头：'+e.message+'\n（需 HTTPS 且授权摄像头）'; }
+}
+
+function tick(){
+  if(video.readyState === video.HAVE_ENOUGH_DATA){
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height);
+    if(code) handleDecoded(code.data);
+  }
+  requestAnimationFrame(tick);
+}
+
+function handleDecoded(str){
+  const d = decodePage(str);
+  if(!d) return;
+  if(d.pageNum === 0){
+    const m = decodeMeta(d.payload);
+    if(!m) return;
+    if(meta == null){
+      meta = m;
+      // 隔日补传：从 IndexedDB 恢复该任务已收页
+      loadFromDB().then(()=>{ renderInfo(); tryAssemble(); });
+    } else if(meta.t !== m.t){
+      // 任务切换：清空旧任务数据，避免污染
+      meta = m; collected = new Map();
+      resultBlob = null;          // 重置下载状态，防止把旧任务字节以新文件名保存
+      dlBtn.disabled = true;
+      clearDB().then(()=> renderInfo());
+    } else {
+      renderInfo();
+    }
+    return;
+  }
+  // 数据页：覆盖式写入（抗偶发误识别，后续正确帧覆盖错误帧）
+  if(meta && d.taskId === meta.t){
+    if(collected.get(d.pageNum) !== d.payload){
+      collected.set(d.pageNum, d.payload);
+      savePage(d.pageNum, d.payload);
+      renderInfo();
+      tryAssemble();
+    }
+  }
+}
+
+function renderInfo(){
+  if(!meta){ return; }
+  const have = [];
+  for(let p=1;p<=meta.pages;p++) if(collected.has(p)) have.push(p);
+  const miss = [];
+  for(let p=1;p<=meta.pages;p++) if(!collected.has(p)) miss.push(p);
+  info.textContent =
+    `任务 ${meta.t} · ${meta.name}\n`+
+    `大小 ${meta.size} 字节 · 共 ${meta.pages} 页 · ECC ${meta.ecc}\n`+
+    `hash ${meta.hash}\n`+
+    `已收 ${have.length} / ${meta.pages} 页`;
+  missingEl.textContent = miss.length ? ('缺页：'+miss.join(',')) : '✓ 全部页码已收齐，正在校验…';
+}
+
+async function tryAssemble(){
+  if(!meta) return;
+  for(let p=1;p<=meta.pages;p++) if(!collected.has(p)) return; // 未齐
+  const res = await reassemble(meta, collected);
+  if(res.ok && res.hashOk){
+    const blob = new Blob([res.bytes], { type:'text/plain;charset=utf-8' });
+    resultBlob = blob;
+    dlBtn.disabled = false;
+    info.textContent += '\n✓ 校验通过（SHA-256 匹配），可下载。';
+    missingEl.textContent = '✓ 完整性校验通过';
+  } else if(res.ok){
+    missingEl.textContent = '✗ 校验失败：hash 不匹配，请重传可疑页。';
+  }
+}
+
+dlBtn.addEventListener('click', ()=>{
+  if(!resultBlob || !meta) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(resultBlob);
+  a.download = meta.name || 'restored.txt';
+  a.click();
+});
+
+// ---- IndexedDB 持久化（隔日补传）----
+function openDB(){
+  return new Promise((res)=>{
+    const r = indexedDB.open(TASK_KEY, 1);
+    r.onupgradeneeded = ()=> { r.result.createObjectStore('pages'); r.result.createObjectStore('kv'); };
+    r.onsuccess = ()=> res(r.result);
+  });
+}
+async function savePage(num, payload){
+  const db = await openDB();
+  const tx = db.transaction('pages','readwrite');
+  tx.objectStore('pages').put(payload, num);
+  return new Promise(r=> tx.oncomplete = r);
+}
+async function clearDB(){
+  const db = await openDB();
+  const tx = db.transaction('pages','readwrite');
+  tx.objectStore('pages').clear();
+  return new Promise(r=> tx.oncomplete = r);
+}
+async function loadFromDB(){
+  const db = await openDB();
+  const tx = db.transaction('pages','readonly');
+  return new Promise((res)=>{
+    const req = tx.objectStore('pages').getAllKeys();
+    req.onsuccess = async ()=>{
+      const keys = req.result;
+      const tx2 = db.transaction('pages','readonly');
+      for(const k of keys){ const v = await new Promise(rr=>{ const g=tx2.objectStore('pages').get(k); g.onsuccess=()=>rr(g.result); }); collected.set(k, v); }
+      res();
+    };
+  });
+}
+
+startCamera();
+</script>
+</body>
+</html>
